@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import cn from 'classnames';
 import { Todo } from '../../types/Todo';
 import { Loader } from '../Loader';
@@ -22,17 +22,21 @@ export const TodoRow: React.FC<Props> = ({
   const [title, setTitle] = useState(todo.title);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
+  useEffect(() => {
+    if (edited) {
+      setTimeout(() => inputRef.current?.focus(), 0);
+    }
+  }, [edited]);
+
   // #region handlers
   const handleRemoveClick = async () => {
     try {
       await onDelete();
-      setEdited(false);
     } catch {}
   };
 
   const handleEditSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-
     const trimmed = title.trim();
 
     if (trimmed === todo.title) {
@@ -41,46 +45,34 @@ export const TodoRow: React.FC<Props> = ({
       return;
     }
 
-    if (trimmed === '') {
-      try {
+    try {
+      if (trimmed === '') {
         await onDelete();
-        setEdited(false);
-      } catch {
-        setEdited(true);
-        inputRef.current?.focus();
-      }
-    } else {
-      try {
+      } else {
         await onRename(trimmed);
-        setEdited(false);
-      } catch {
-        setEdited(true);
-        inputRef.current?.focus();
       }
+
+      setEdited(false);
+    } catch {
+      setEdited(true);
+      setTimeout(() => inputRef.current?.focus(), 0);
     }
   };
 
   const handleOnBlur = async () => {
     const trimmed = title.trim();
 
-    if (trimmed === '') {
-      try {
+    try {
+      if (trimmed === '') {
         await onDelete();
-        setEdited(false);
-      } catch {
-        setEdited(true);
-        inputRef.current?.focus();
+      } else {
+        await onRename(trimmed);
       }
 
-      return;
-    }
-
-    try {
-      await onRename(trimmed);
       setEdited(false);
     } catch {
       setEdited(true);
-      inputRef.current?.focus();
+      setTimeout(() => inputRef.current?.focus(), 0);
     }
   };
 
@@ -90,7 +82,7 @@ export const TodoRow: React.FC<Props> = ({
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Escape') {
-      inputRef.current?.blur();
+      setTimeout(() => inputRef.current?.focus(), 0);
       setTitle(todo.title);
       setEdited(false);
     }

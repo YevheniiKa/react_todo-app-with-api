@@ -7,6 +7,8 @@ import * as todoService from './api/todos';
 import { TodoRow } from './components/TodoRow';
 import { WarningError } from './components/WarningError';
 import { USER_ID } from './utils/preferences';
+import { TransitionGroup, CSSTransition } from 'react-transition-group';
+import { UserWarning } from './UserWarning';
 
 export const App: React.FC = () => {
   const [todos, setTodos] = useState<Todo[]>([]);
@@ -40,7 +42,6 @@ export const App: React.FC = () => {
       .getTodos()
       .then(setTodos)
       .catch(() => {
-        setErrorMessage('Unable to load todos');
         showError('Unable to load todos');
       });
   }, []);
@@ -195,7 +196,9 @@ export const App: React.FC = () => {
 
   // #region createTodo
   const createTodo = (newTitle: string) => {
-    if (!newTitle.trim()) {
+    const trimmed = newTitle.trim();
+
+    if (!trimmed) {
       return;
     }
 
@@ -269,6 +272,10 @@ export const App: React.FC = () => {
 
   // #endregion
 
+  if (!USER_ID) {
+    return <UserWarning />;
+  }
+
   return (
     <div className="todoapp">
       <h1 className="todoapp__title">todos</h1>
@@ -303,20 +310,21 @@ export const App: React.FC = () => {
         </header>
 
         <section className="todoapp__main" data-cy="TodoList">
-          {filteredTodos.map(todo => {
-            return (
-              <TodoRow
-                key={todo.id}
-                todo={todo}
-                onDelete={() => deleteTodo(todo.id)}
-                onRename={(newTitle: string) =>
-                  renameTodo(todo, newTitle).then(() => {})
-                }
-                onToggleTodo={() => toggleTodo(todo)}
-                onLoading={loadingTodos.includes(todo.id!)}
-              />
-            );
-          })}
+          <TransitionGroup>
+            {filteredTodos.map(todo => (
+              <CSSTransition key={todo.id} timeout={300} classNames="item">
+                <TodoRow
+                  todo={todo}
+                  onDelete={() => deleteTodo(todo.id)}
+                  onRename={(newTitle: string) =>
+                    renameTodo(todo, newTitle).then(() => {})
+                  }
+                  onToggleTodo={() => toggleTodo(todo)}
+                  onLoading={loadingTodos.includes(todo.id!)}
+                />
+              </CSSTransition>
+            ))}
+          </TransitionGroup>
         </section>
 
         {todos.length > 0 && (

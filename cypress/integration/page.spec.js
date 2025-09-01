@@ -1748,7 +1748,7 @@ describe('', () => {
           todos.assertNotLoading(0);
         });
 
-        it.skip('should stay open on fail', () => {
+        it('should stay open on fail', () => {
           // to prevent Cypress from failing the test on uncaught exception
           cy.once('uncaught:exception', () => false);
 
