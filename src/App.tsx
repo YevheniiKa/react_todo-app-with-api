@@ -17,6 +17,7 @@ import { TransitionGroup, CSSTransition } from 'react-transition-group';
 import { UserWarning } from './UserWarning';
 import { TodoFooter } from './components/TodoFooter';
 import { TodoHeader } from './components/TodoHeader';
+import { FilterType } from './utils/FilterType';
 
 export const App: React.FC = () => {
   const [todos, setTodos] = useState<Todo[]>([]);
@@ -54,7 +55,7 @@ export const App: React.FC = () => {
       .catch(() => {
         showError('Unable to load todos');
       });
-  }, []);
+  }, [showError]);
 
   // #region deleteTodo
 
@@ -116,7 +117,7 @@ export const App: React.FC = () => {
         completedTodos.forEach(todo => stopLoading(todo.id!));
       }
     },
-    [todos],
+    [todos, startLoading, stopLoading, showError],
   );
 
   const handleDelete = useCallback(
@@ -218,7 +219,7 @@ export const App: React.FC = () => {
     }
 
     todosToUpdate.forEach(todo => stopLoading(todo.id!));
-  }, [todos]);
+  }, [todos, startLoading, stopLoading, showError]);
 
   const handleToggle = useCallback(
     (todo: Todo) => toggleTodo(todo),
@@ -303,9 +304,9 @@ export const App: React.FC = () => {
     () =>
       todos.filter(todo => {
         switch (filter) {
-          case 'active':
+          case FilterType.Active:
             return !todo.completed;
-          case 'completed':
+          case FilterType.Completed:
             return todo.completed;
           default:
             return true;
