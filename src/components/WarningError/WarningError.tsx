@@ -1,10 +1,10 @@
 import React from 'react';
 import cn from 'classnames';
 type Props = {
-  message: string;
+  errorMessage: string;
   onClose: () => void;
 };
-export const WarningError: React.FC<Props> = ({ message, onClose }) => {
+export const WarningError: React.FC<Props> = ({ errorMessage, onClose }) => {
   return (
     <div
       data-cy="ErrorNotification"
@@ -13,7 +13,7 @@ export const WarningError: React.FC<Props> = ({ message, onClose }) => {
         'is-danger',
         'is-light',
         'has-text-weight-normal',
-        { hidden: !message },
+        { hidden: !errorMessage },
       )}
     >
       <button
@@ -22,7 +22,7 @@ export const WarningError: React.FC<Props> = ({ message, onClose }) => {
         className="delete"
         onClick={onClose}
       />
-      {message || '\u00A0'}
+      {errorMessage}
     </div>
   );
 };

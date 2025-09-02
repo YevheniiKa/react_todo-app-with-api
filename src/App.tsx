@@ -1,14 +1,22 @@
 /* eslint-disable jsx-a11y/label-has-associated-control */
 /* eslint-disable jsx-a11y/control-has-associated-label */
-import React, { useEffect, useRef, useState } from 'react';
-import cn from 'classnames';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+
 import { Todo } from './types/Todo';
 import * as todoService from './api/todos';
-import { TodoRow } from './components/TodoRow';
+import { TodoItem } from './components/TodoItem';
 import { WarningError } from './components/WarningError';
 import { USER_ID } from './utils/preferences';
 import { TransitionGroup, CSSTransition } from 'react-transition-group';
 import { UserWarning } from './UserWarning';
+import { TodoFooter } from './components/TodoFooter';
+import { TodoHeader } from './components/TodoHeader';
 
 export const App: React.FC = () => {
   const [todos, setTodos] = useState<Todo[]>([]);
@@ -21,21 +29,23 @@ export const App: React.FC = () => {
   // #region loading
   const [loadingTodos, setLoadingTodos] = useState<number[]>([]);
 
-  const startLoading = (id: number) => {
+  const startLoading = useCallback((id: number) => {
     setLoadingTodos(prev => [...prev, id]);
-  };
+  }, []);
 
-  const stopLoading = (id: number) => {
+  const stopLoading = useCallback((id: number) => {
     setLoadingTodos(prev => prev.filter(todoId => todoId !== id));
-  };
+  }, []);
   // #endregion
 
-  function showError(message: string) {
+  const showError = useCallback((message: string) => {
     setErrorMessage(message);
-    setTimeout(() => {
-      setErrorMessage('');
-    }, 3000);
-  }
+    setTimeout(() => setErrorMessage(''), 3000);
+  }, []);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, [todos.length]);
 
   useEffect(() => {
     todoService
@@ -47,77 +57,85 @@ export const App: React.FC = () => {
   }, []);
 
   // #region deleteTodo
-  const deleteTodo = (todoId: number) => {
-    startLoading(todoId);
 
-    return todoService
-      .deleteTodo(todoId)
-      .then(() => {
-        {
-          setTodos(currentTodos =>
-            currentTodos.filter(todo => todo.id !== todoId),
-          );
+  const deleteTodo = useCallback(
+    async (todoId: number) => {
+      startLoading(todoId);
+
+      try {
+        await todoService.deleteTodo(todoId);
+        setTodos(currentTodos =>
+          currentTodos.filter(todo => todo.id !== todoId),
+        );
+      } catch (err) {
+        showError('Unable to delete a todo');
+        throw err;
+      } finally {
+        stopLoading(todoId);
+      }
+    },
+    [startLoading, stopLoading, showError],
+  );
+
+  const handleDeleteAllCompletedTodos = useCallback(
+    async (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+
+      const completedTodos = todos.filter(todo => todo.completed);
+
+      completedTodos.forEach(todo => startLoading(todo.id!));
+
+      try {
+        const results = await Promise.allSettled(
+          completedTodos.map(todo =>
+            todoService.deleteTodo(todo.id!).then(() => todo.id),
+          ),
+        );
+
+        const successfulIds: number[] = [];
+        let hasError = false;
+
+        results.forEach(result => {
+          if (result.status === 'fulfilled') {
+            successfulIds.push(result.value);
+          } else {
+            hasError = true;
+          }
+        });
+
+        setTodos(currentTodos =>
+          currentTodos.filter(todo => !successfulIds.includes(todo.id!)),
+        );
+
+        if (hasError) {
+          showError('Unable to delete a todo');
+        } else {
           inputRef.current?.focus();
         }
-      })
-      .catch(() => {
-        showError('Unable to delete a todo');
-      })
-      .finally(() => {
-        stopLoading(todoId);
-      });
-  };
-
-  const handleDeleteAllCompletedTodos = async (
-    event: React.MouseEvent<HTMLButtonElement>,
-  ) => {
-    event.preventDefault();
-
-    const completedTodos = todos.filter(todo => todo.completed);
-
-    completedTodos.forEach(todo => startLoading(todo.id!));
-
-    try {
-      const results = await Promise.allSettled(
-        completedTodos.map(todo =>
-          todoService.deleteTodo(todo.id!).then(() => todo.id),
-        ),
-      );
-
-      const successfulIds: number[] = [];
-      let hasError = false;
-
-      results.forEach(result => {
-        if (result.status === 'fulfilled') {
-          successfulIds.push(result.value);
-        } else {
-          hasError = true;
-        }
-      });
-
-      setTodos(currentTodos =>
-        currentTodos.filter(todo => !successfulIds.includes(todo.id!)),
-      );
-
-      if (hasError) {
-        showError('Unable to delete a todo');
-      } else {
-        inputRef.current?.focus();
+      } finally {
+        completedTodos.forEach(todo => stopLoading(todo.id!));
       }
-    } finally {
-      completedTodos.forEach(todo => stopLoading(todo.id!));
-    }
-  };
+    },
+    [todos],
+  );
 
+  const handleDelete = useCallback(
+    (id: number) => deleteTodo(id),
+    [deleteTodo],
+  );
   // #endregion
 
-  // #region updatedTodo
-  const renameTodo = (todoToUpdate: Todo, newTitle: string) => {
-    startLoading(todoToUpdate.id!);
+  // #region renameTodo
+  const renameTodo = useCallback(
+    async (todoToUpdate: Todo, newTitle: string) => {
+      startLoading(todoToUpdate.id!);
 
-    return todoService
-      .updateTodo({ ...todoToUpdate, title: newTitle.trim() })
-      .then(updatedTodo => {
+      try {
+        const updatedTodo = await todoService.updateTodo({
+          ...todoToUpdate,
+          title: newTitle.trim(),
+        });
+
         setTodos(current =>
           current.map(todo =>
             todo.id === updatedTodo.id ? updatedTodo : todo,
@@ -125,41 +143,51 @@ export const App: React.FC = () => {
         );
 
         return updatedTodo;
-      })
-      .catch(error => {
+      } catch (err) {
         showError('Unable to update a todo');
-        throw new error();
-      })
-      .finally(() => stopLoading(todoToUpdate.id!));
-  };
+        throw err;
+      } finally {
+        stopLoading(todoToUpdate.id!);
+      }
+    },
+    [startLoading, stopLoading, showError],
+  );
+
+  const handleRename = useCallback(
+    (todo: Todo, newTitle: string) => renameTodo(todo, newTitle),
+    [renameTodo],
+  );
 
   // #endregion
 
   // #region ToggleTodo
-  const toggleTodo = (todoToUpdate: Todo) => {
-    startLoading(todoToUpdate.id!);
+  const toggleTodo = useCallback(
+    (todoToUpdate: Todo) => {
+      startLoading(todoToUpdate.id!);
 
-    return todoService
-      .updateTodo({
-        ...todoToUpdate,
-        completed: !todoToUpdate.completed,
-      })
-      .then(updatedTodo => {
-        setTodos(currentTodos =>
-          currentTodos.map(todo =>
-            todo.id === updatedTodo.id ? updatedTodo : todo,
-          ),
-        );
-      })
-      .catch(() => {
-        showError('Unable to update a todo');
-      })
-      .finally(() => {
-        stopLoading(todoToUpdate.id!);
-      });
-  };
+      return todoService
+        .updateTodo({
+          ...todoToUpdate,
+          completed: !todoToUpdate.completed,
+        })
+        .then(updatedTodo => {
+          setTodos(currentTodos =>
+            currentTodos.map(todo =>
+              todo.id === updatedTodo.id ? updatedTodo : todo,
+            ),
+          );
+        })
+        .catch(() => {
+          showError('Unable to update a todo');
+        })
+        .finally(() => {
+          stopLoading(todoToUpdate.id!);
+        });
+    },
+    [startLoading, stopLoading, showError],
+  );
 
-  const toggleAllTodos = async () => {
+  const toggleAllTodos = useCallback(async () => {
     const notCompletedTodos = todos.filter(todo => !todo.completed);
     const allCompleted = notCompletedTodos.length === 0;
     const todosToUpdate = allCompleted ? todos : notCompletedTodos;
@@ -190,76 +218,79 @@ export const App: React.FC = () => {
     }
 
     todosToUpdate.forEach(todo => stopLoading(todo.id!));
-  };
+  }, [todos]);
 
+  const handleToggle = useCallback(
+    (todo: Todo) => toggleTodo(todo),
+    [toggleTodo],
+  );
   // #endregion
 
   // #region createTodo
-  const createTodo = (newTitle: string) => {
-    const trimmed = newTitle.trim();
+  const createTodo = useCallback(
+    async (newTitle: string) => {
+      const trimmed = newTitle.trim();
 
-    if (!trimmed) {
-      return;
-    }
+      if (!trimmed) {
+        return;
+      }
 
-    setIsCreating(true);
+      setIsCreating(true);
 
-    const tempTodo: Todo & { isTemp: boolean } = {
-      id: Date.now(),
-      title: newTitle,
-      completed: false,
-      userId: USER_ID,
-      isTemp: true,
-    };
+      const tempTodo: Todo & { isTemp: boolean } = {
+        id: Date.now(),
+        title: newTitle,
+        completed: false,
+        userId: USER_ID,
+        isTemp: true,
+      };
 
-    setTodos(current => [...current, tempTodo]);
-    startLoading(tempTodo.id);
+      setTodos(current => [...current, tempTodo]);
+      startLoading(tempTodo.id);
 
-    todoService
-      .createTodo(newTitle)
-      .then(newTodo => {
+      try {
+        const newTodo = await todoService.createTodo(newTitle);
+
         setTodos(current =>
           current.map(todo => (todo.id === tempTodo.id ? newTodo : todo)),
         );
+
         setTitle('');
-      })
-      .catch(() => {
+
+        setTimeout(() => inputRef.current?.focus(), 0);
+      } catch {
         showError('Unable to add a todo');
         setTodos(current => current.filter(todo => todo.id !== tempTodo.id));
-      })
-      .finally(() => {
+      } finally {
         stopLoading(tempTodo.id);
         setIsCreating(false);
-        setTimeout(() => inputRef.current?.focus(), 0);
-      });
-  };
+      }
+    },
+    [startLoading, stopLoading, showError],
+  );
 
-  const handleCreateTodo = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key !== 'Enter') {
-      return;
-    }
+  const handleCreateTodo = useCallback(
+    (event: React.KeyboardEvent<HTMLInputElement>) => {
+      if (event.key !== 'Enter') {
+        return;
+      }
 
-    if (!title.trim()) {
-      showError('Title should not be empty');
+      const trimmed = title.trim();
 
-      return;
-    }
+      if (!trimmed) {
+        showError('Title should not be empty');
 
-    createTodo(title.trim());
-  };
+        return;
+      }
+
+      createTodo(trimmed);
+    },
+    [title, createTodo, showError],
+  );
+
   // #endregion
 
   // #region filterTodos
-  function filterTodos(array: Todo[]): Todo[] {
-    switch (filter) {
-      case 'active':
-        return array.filter(todo => !todo.completed);
-      case 'completed':
-        return array.filter(todo => todo.completed);
-      default:
-        return array;
-    }
-  }
 
   const handleFilter = (event: React.MouseEvent<HTMLAnchorElement>) => {
     event.preventDefault();
@@ -268,7 +299,20 @@ export const App: React.FC = () => {
     setFilter(value);
   };
 
-  const filteredTodos = filterTodos(todos);
+  const filteredTodos = useMemo(
+    () =>
+      todos.filter(todo => {
+        switch (filter) {
+          case 'active':
+            return !todo.completed;
+          case 'completed':
+            return todo.completed;
+          default:
+            return true;
+        }
+      }),
+    [todos, filter],
+  );
 
   // #endregion
 
@@ -281,45 +325,24 @@ export const App: React.FC = () => {
       <h1 className="todoapp__title">todos</h1>
 
       <div className="todoapp__content">
-        <header className="todoapp__header">
-          {todos.length > 0 && (
-            <button
-              type="button"
-              className={cn('todoapp__toggle-all', {
-                active: todos.length > 0 && todos.every(todo => todo.completed),
-              })}
-              data-cy="ToggleAllButton"
-              onClick={toggleAllTodos}
-            />
-          )}
-
-          <form onSubmit={e => e.preventDefault()}>
-            <input
-              data-cy="NewTodoField"
-              type="text"
-              className="todoapp__new-todo"
-              placeholder="What needs to be done?"
-              value={title}
-              onChange={event => setTitle(event.target.value)}
-              onKeyDown={handleCreateTodo}
-              autoFocus
-              ref={inputRef}
-              disabled={isCreating}
-            />
-          </form>
-        </header>
-
+        <TodoHeader
+          todos={todos}
+          title={title}
+          setTitle={setTitle}
+          isCreating={isCreating}
+          toggleAllTodos={toggleAllTodos}
+          handleCreateTodo={handleCreateTodo}
+          inputRef={inputRef}
+        />
         <section className="todoapp__main" data-cy="TodoList">
           <TransitionGroup>
             {filteredTodos.map(todo => (
               <CSSTransition key={todo.id} timeout={300} classNames="item">
-                <TodoRow
+                <TodoItem
                   todo={todo}
-                  onDelete={() => deleteTodo(todo.id)}
-                  onRename={(newTitle: string) =>
-                    renameTodo(todo, newTitle).then(() => {})
-                  }
-                  onToggleTodo={() => toggleTodo(todo)}
+                  onDelete={handleDelete}
+                  onRename={handleRename}
+                  onToggleTodo={handleToggle}
                   onLoading={loadingTodos.includes(todo.id!)}
                 />
               </CSSTransition>
@@ -328,63 +351,17 @@ export const App: React.FC = () => {
         </section>
 
         {todos.length > 0 && (
-          <footer className="todoapp__footer" data-cy="Footer">
-            <span className="todo-count" data-cy="TodosCounter">
-              {/* eslint-disable-next-line */}
-              {
-                todos.filter(todo => !todo.completed && !todo.isTemp).length
-              }{' '}
-              items left
-            </span>
-
-            <nav className="filter" data-cy="Filter">
-              <a
-                href="#/"
-                className={cn('filter__link', { selected: filter === '' })}
-                data-cy="FilterLinkAll"
-                onClick={handleFilter}
-              >
-                All
-              </a>
-
-              <a
-                href="#/active"
-                className={cn('filter__link', {
-                  selected: filter === 'active',
-                })}
-                data-cy="FilterLinkActive"
-                onClick={handleFilter}
-              >
-                Active
-              </a>
-
-              <a
-                href="#/completed"
-                className={cn('filter__link', {
-                  selected: filter === 'completed',
-                })}
-                data-cy="FilterLinkCompleted"
-                onClick={handleFilter}
-              >
-                Completed
-              </a>
-            </nav>
-
-            <button
-              type="button"
-              className="todoapp__clear-completed"
-              data-cy="ClearCompletedButton"
-              onClick={handleDeleteAllCompletedTodos}
-              disabled={todos.every(todo => !todo.completed)}
-            >
-              Clear completed
-            </button>
-          </footer>
+          <TodoFooter
+            filter={filter}
+            todos={todos}
+            handleFilter={handleFilter}
+            handleDeleteAllCompletedTodos={handleDeleteAllCompletedTodos}
+          />
         )}
       </div>
 
       <WarningError
-        message={errorMessage}
+        errorMessage={errorMessage}
         onClose={() => setErrorMessage('')}
       />
     </div>
