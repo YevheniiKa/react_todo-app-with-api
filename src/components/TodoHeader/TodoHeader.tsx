@@ -6,7 +6,7 @@ type Props = {
   todos: Todo[];
   title: string;
   setTitle: (title: string) => void;
-  isCreating: boolean;
+  onLoading: boolean;
   toggleAllTodos: () => Promise<void>;
   handleCreateTodo: (event: React.KeyboardEvent<HTMLInputElement>) => void;
   inputRef: { current: null | HTMLInputElement };
@@ -16,7 +16,7 @@ export const TodoHeader: React.FC<Props> = React.memo(function TodoHeader({
   todos,
   title,
   setTitle,
-  isCreating,
+  onLoading,
   toggleAllTodos,
   handleCreateTodo,
   inputRef,
@@ -44,7 +44,7 @@ export const TodoHeader: React.FC<Props> = React.memo(function TodoHeader({
           onChange={event => setTitle(event.target.value)}
           onKeyDown={handleCreateTodo}
           ref={inputRef}
-          disabled={isCreating}
+          disabled={onLoading}
         />
       </form>
     </header>

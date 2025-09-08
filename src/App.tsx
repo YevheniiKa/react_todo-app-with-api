@@ -1,5 +1,7 @@
 /* eslint-disable jsx-a11y/label-has-associated-control */
 /* eslint-disable jsx-a11y/control-has-associated-label */
+// #region Import
+
 import React, {
   useCallback,
   useEffect,
@@ -7,24 +9,27 @@ import React, {
   useRef,
   useState,
 } from 'react';
-
-import { Todo } from './types/Todo';
 import * as todoService from './api/todos';
+import { TransitionGroup, CSSTransition } from 'react-transition-group';
 import { TodoItem } from './components/TodoItem';
 import { WarningError } from './components/WarningError';
-import { USER_ID } from './utils/preferences';
-import { TransitionGroup, CSSTransition } from 'react-transition-group';
-import { UserWarning } from './UserWarning';
 import { TodoFooter } from './components/TodoFooter';
 import { TodoHeader } from './components/TodoHeader';
-import { FilterType } from './utils/FilterType';
+import { UserWarning } from './UserWarning';
+import { Todo } from './types/Todo';
+import { Filter } from './types/Filter';
+import { ErrorMessage } from './types/ErrorMessage';
+import { USER_ID } from './utils/preferences';
+
+// #endregion
 
 export const App: React.FC = () => {
   const [todos, setTodos] = useState<Todo[]>([]);
-  const [errorMessage, setErrorMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState<ErrorMessage>(
+    ErrorMessage.Default,
+  );
   const [title, setTitle] = useState('');
-  const [filter, setFilter] = useState('');
-  const [isCreating, setIsCreating] = useState(false);
+  const [filter, setFilter] = useState<Filter>(Filter.Default);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   // #region loading
@@ -39,21 +44,20 @@ export const App: React.FC = () => {
   }, []);
   // #endregion
 
-  const showError = useCallback((message: string) => {
-    setErrorMessage(message);
-    setTimeout(() => setErrorMessage(''), 3000);
-  }, []);
-
   useEffect(() => {
     inputRef.current?.focus();
   }, [todos.length]);
+
+  const showError = useCallback((message: ErrorMessage) => {
+    setErrorMessage(message);
+  }, []);
 
   useEffect(() => {
     todoService
       .getTodos()
       .then(setTodos)
       .catch(() => {
-        showError('Unable to load todos');
+        showError(ErrorMessage.loadTodos);
       });
   }, [showError]);
 
@@ -69,7 +73,7 @@ export const App: React.FC = () => {
           currentTodos.filter(todo => todo.id !== todoId),
         );
       } catch (err) {
-        showError('Unable to delete a todo');
+        showError(ErrorMessage.deleteTodo);
         throw err;
       } finally {
         stopLoading(todoId);
@@ -109,7 +113,7 @@ export const App: React.FC = () => {
         );
 
         if (hasError) {
-          showError('Unable to delete a todo');
+          showError(ErrorMessage.deleteTodo);
         } else {
           inputRef.current?.focus();
         }
@@ -145,7 +149,7 @@ export const App: React.FC = () => {
 
         return updatedTodo;
       } catch (err) {
-        showError('Unable to update a todo');
+        showError(ErrorMessage.updateTodo);
         throw err;
       } finally {
         stopLoading(todoToUpdate.id!);
@@ -179,7 +183,7 @@ export const App: React.FC = () => {
           );
         })
         .catch(() => {
-          showError('Unable to update a todo');
+          showError(ErrorMessage.updateTodo);
         })
         .finally(() => {
           stopLoading(todoToUpdate.id!);
@@ -212,7 +216,7 @@ export const App: React.FC = () => {
     const hasErrors = results.some(r => r.status === 'rejected');
 
     if (hasErrors) {
-      showError('Unable to toggle some todos');
+      showError(ErrorMessage.toggleTodo);
       const freshTodos = await todoService.getTodos();
 
       setTodos(freshTodos);
@@ -236,8 +240,6 @@ export const App: React.FC = () => {
         return;
       }
 
-      setIsCreating(true);
-
       const tempTodo: Todo & { isTemp: boolean } = {
         id: Date.now(),
         title: newTitle,
@@ -260,11 +262,10 @@ export const App: React.FC = () => {
 
         setTimeout(() => inputRef.current?.focus(), 0);
       } catch {
-        showError('Unable to add a todo');
+        showError(ErrorMessage.addTodo);
         setTodos(current => current.filter(todo => todo.id !== tempTodo.id));
       } finally {
         stopLoading(tempTodo.id);
-        setIsCreating(false);
       }
     },
     [startLoading, stopLoading, showError],
@@ -279,7 +280,7 @@ export const App: React.FC = () => {
       const trimmed = title.trim();
 
       if (!trimmed) {
-        showError('Title should not be empty');
+        showError(ErrorMessage.emptyTitle);
 
         return;
       }
@@ -295,7 +296,9 @@ export const App: React.FC = () => {
 
   const handleFilter = (event: React.MouseEvent<HTMLAnchorElement>) => {
     event.preventDefault();
-    const value = event.currentTarget.getAttribute('href')?.slice(2) || '';
+    const value =
+      (event.currentTarget.getAttribute('href')?.slice(2) as Filter) ||
+      Filter.Default;
 
     setFilter(value);
   };
@@ -304,9 +307,9 @@ export const App: React.FC = () => {
     () =>
       todos.filter(todo => {
         switch (filter) {
-          case FilterType.Active:
+          case Filter.Active:
             return !todo.completed;
-          case FilterType.Completed:
+          case Filter.Completed:
             return todo.completed;
           default:
             return true;
@@ -329,8 +332,8 @@ export const App: React.FC = () => {
         <TodoHeader
           todos={todos}
           title={title}
+          onLoading={loadingTodos.length > 0}
           setTitle={setTitle}
-          isCreating={isCreating}
           toggleAllTodos={toggleAllTodos}
           handleCreateTodo={handleCreateTodo}
           inputRef={inputRef}
@@ -363,7 +366,7 @@ export const App: React.FC = () => {
 
       <WarningError
         errorMessage={errorMessage}
-        onClose={() => setErrorMessage('')}
+        onClose={() => setErrorMessage(ErrorMessage.Default)}
       />
     </div>
   );
